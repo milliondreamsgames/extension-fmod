@@ -34,6 +34,34 @@ If you have issues with stutter, you can try adjusting `Buffer Length` and `Num 
 
 If you need platform-specific overrides for these settings, open `game.project` as a text file, scroll to the `fmod` section and append one of `_macos`, `_windows`, `_linux`, `_android`, `_ios`, `_html5` to the config key (eg. `buffer_length_android`).
 
+### iOS audio coexistence
+
+To preserve music or podcasts already playing in another app, opt in before building:
+
+```ini
+[fmod]
+audio_session_category_ios = ambient
+```
+
+`audio_session_category` accepts `default` (the default, which leaves the session policy
+untouched) and `ambient`. Only iOS reads this setting. Ambient is selected **before FMOD
+initialization** and reapplied before interruption recovery. It mixes without ducking
+other apps and respects the silent switch and screen locking; it does not enable background
+playback. No explicit startup activation is added.
+
+An invalid policy or failed Ambient request prevents FMOD initialization, leaving the Lua
+`fmod` module unavailable. Failed recovery does not resume the mixer and retains the existing
+bounded retries. Startup logs report category, options, and the secondary-audio hint before
+and after FMOD initialization; they do not contain media or account information.
+
+This setting does not mute your game's music automatically. Keep sound effects enabled and
+use the engine's external-music query to decide whether to play your own soundtrack.
+
+To run the native startup/interruption control-flow tests on macOS with Xcode, set
+`DMSDK_INCLUDE` to the directory containing `dmsdk/lua/lua.h`, then run
+`sh cicd/test_ios_audio.sh`. These tests compile the production implementation against
+session/FMOD doubles; real-iPhone playback testing is still required.
+
 ### Raise the heap size on HTML5
 
 FMOD will hiccup and not play sound on HTML5 (particularily Safari on iOS and macOS) if it doesn't have enough memory for your banks and sound buffers, especially if loaded with `load_bank_memory()`, which copies them into memory. The exact amount  depends from game to game, but for this example to run, it needs a 512MB heap.

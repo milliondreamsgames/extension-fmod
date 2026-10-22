@@ -4,32 +4,65 @@
 #if TARGET_OS_IPHONE
 
 #import <AVFoundation/AVFoundation.h>
+#include <string.h>
 
 #define AUDIO_RESUME_RETRY_COUNT 20
 #define AUDIO_RESUME_RETRY_INTERVAL 0.2
 
 static NSTimer* resumeTimer = nil;
 
+void FMODExt_logIOSAudioSession(const char* phase) {
+    @autoreleasepool {
+        AVAudioSession* session = [AVAudioSession sharedInstance];
+        LOGI("iOS audio session %s: category=%s options=%lu secondary_audio=%d", phase,
+             [[session category] UTF8String], (unsigned long)[session categoryOptions],
+             (int)[session secondaryAudioShouldBeSilencedHint]);
+    }
+}
+
+bool FMODExt_configureIOSAudioSession() {
+    @autoreleasepool {
+        const char* policy = FMODExt_dmConfigFile_GetString("fmod.audio_session_category", "default");
+        if (strcmp(policy, "default") == 0) { return true; }
+        if (strcmp(policy, "ambient") != 0) {
+            LOGE("Invalid fmod.audio_session_category: %s (expected default or ambient)", policy);
+            return false;
+        }
+
+        // Configure mixing before FMOD opens output. Do not activate the session here.
+        NSError* error = nil;
+        BOOL success = [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryAmbient
+                                                      withOptions:0 error:&error];
+        if (!success) {
+            LOGE("Cannot configure Ambient audio session: %s",
+                 error ? [[error localizedDescription] UTF8String] : "no error was issued");
+        }
+        return success;
+    }
+}
+
 // In case it doesn't work from the first try, retry activating the audio session
 // a few times. For example, after dismissing a phone call, [AVAudioSession setActive: error:]
 // errors out from the first try, but works on the second
 static void resumeAudioSession(int retries) {
     @autoreleasepool {
-        NSError* error;
-        BOOL success = [[AVAudioSession sharedInstance] setActive:TRUE error:&error];
-        if (success) {
-            FMODExt_resumeMixer();
-            return;
-        }
+        if (FMODExt_configureIOSAudioSession()) {
+            NSError* error = nil;
+            BOOL success = [[AVAudioSession sharedInstance] setActive:TRUE error:&error];
+            if (success) {
+                FMODExt_resumeMixer();
+                return;
+            }
 
-        if (error) {
-            LOGW("Cannot activate audio session: %s", [[error localizedDescription] UTF8String]);
-        } else {
-            LOGW("Cannot activate audio session and no error was issued");
+            if (error) {
+                LOGW("Cannot activate audio session: %s", [[error localizedDescription] UTF8String]);
+            } else {
+                LOGW("Cannot activate audio session and no error was issued");
+            }
         }
 
         if (retries <= 0) {
-            LOGE("Cannot activate audio session. Not retrying anymore.");
+            LOGE("Cannot restore audio session. Not retrying anymore.");
             return;
         }
 
