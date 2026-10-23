@@ -25,7 +25,8 @@ bool FMODExt_configureIOSAudioSession() {
         const char* policy = FMODExt_dmConfigFile_GetString("fmod.audio_session_category", "default");
         if (strcmp(policy, "default") == 0) { return true; }
         if (strcmp(policy, "ambient") != 0) {
-            LOGE("Invalid fmod.audio_session_category: %s (expected default or ambient)", policy);
+            LOGW("Invalid fmod.audio_session_category: %s (expected default or ambient); continuing with current policy", policy);
+            FMODExt_logIOSAudioSession("after invalid policy");
             return false;
         }
 
@@ -34,8 +35,9 @@ bool FMODExt_configureIOSAudioSession() {
         BOOL success = [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryAmbient
                                                       withOptions:0 error:&error];
         if (!success) {
-            LOGE("Cannot configure Ambient audio session: %s",
+            LOGW("Cannot configure Ambient audio session; continuing with current policy: %s",
                  error ? [[error localizedDescription] UTF8String] : "no error was issued");
+            FMODExt_logIOSAudioSession("after category configuration failure");
         }
         return success;
     }
@@ -46,19 +48,19 @@ bool FMODExt_configureIOSAudioSession() {
 // errors out from the first try, but works on the second
 static void resumeAudioSession(int retries) {
     @autoreleasepool {
-        if (FMODExt_configureIOSAudioSession()) {
-            NSError* error = nil;
-            BOOL success = [[AVAudioSession sharedInstance] setActive:TRUE error:&error];
-            if (success) {
-                FMODExt_resumeMixer();
-                return;
-            }
+        // A failed policy request must not prevent activation with the current policy.
+        FMODExt_configureIOSAudioSession();
+        NSError* error = nil;
+        BOOL success = [[AVAudioSession sharedInstance] setActive:TRUE error:&error];
+        if (success) {
+            FMODExt_resumeMixer();
+            return;
+        }
 
-            if (error) {
-                LOGW("Cannot activate audio session: %s", [[error localizedDescription] UTF8String]);
-            } else {
-                LOGW("Cannot activate audio session and no error was issued");
-            }
+        if (error) {
+            LOGW("Cannot activate audio session: %s", [[error localizedDescription] UTF8String]);
+        } else {
+            LOGW("Cannot activate audio session and no error was issued");
         }
 
         if (retries <= 0) {

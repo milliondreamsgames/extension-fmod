@@ -49,10 +49,12 @@ initialization** and reapplied before interruption recovery. It mixes without du
 other apps and respects the silent switch and screen locking; it does not enable background
 playback. No explicit startup activation is added.
 
-An invalid policy or failed Ambient request prevents FMOD initialization, leaving the Lua
-`fmod` module unavailable. Failed recovery does not resume the mixer and retains the existing
-bounded retries. Startup logs report category, options, and the secondary-audio hint before
-and after FMOD initialization; they do not contain media or account information.
+Category configuration is best-effort: an invalid policy or failed Ambient request logs a
+warning and continues startup or recovery with the current session policy. External audio
+may then be interrupted. FMOD initialization errors still prevent Lua module registration,
+and failed session activation still keeps the mixer suspended with bounded retries.
+Logs report category, options, and the secondary-audio hint before and after FMOD
+initialization and after configuration failures; they do not contain media or account information.
 
 This setting does not mute your game's music automatically. Keep sound effects enabled and
 use the engine's external-music query to decide whether to play your own soundtrack.

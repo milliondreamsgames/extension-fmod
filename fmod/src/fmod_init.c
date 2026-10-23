@@ -57,10 +57,8 @@ static FMOD_SPEAKERMODE speakerModeFromString(const char* str) {
 void FMODExt_init(lua_State* L) {
 #if TARGET_OS_IPHONE
     FMODExt_logIOSAudioSession("before FMOD initialization");
-    if (!FMODExt_configureIOSAudioSession()) {
-        LOGE("FMOD initialization skipped: iOS audio session configuration failed");
-        return;
-    }
+    // Coexistence is best-effort; FMOD's own initialization checks still apply.
+    FMODExt_configureIOSAudioSession();
 #endif
 
     if (!FMODExt_linkLibraries()) {

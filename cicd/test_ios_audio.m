@@ -7,11 +7,13 @@
 #undef TARGET_OS_IPHONE
 #define TARGET_OS_IPHONE 1
 #include "../fmod/src/fmod_ext.h"
+// Avoid colliding with Apple's class if Foundation loads the real AudioSession framework.
+#define AVAudioSession TestAudioSession
 #import <AVFoundation/AVFoundation.h>
 
 static const char* policy = "ambient";
-static int categories, activations, links, creates, initializes, registrations, resumes, timers;
-static bool failCategory, failActivation;
+static int categories, activations, links, creates, initializes, registrations, resumes, timers, releases;
+static bool failCategory, failActivation, failInitialize;
 static NSString* currentCategory = @"SoloAmbient";
 static AVAudioSessionCategoryOptions currentOptions = 0;
 
@@ -34,7 +36,7 @@ static AVAudioSessionCategoryOptions currentOptions = 0;
 - (BOOL)setActive:(BOOL)active error:(NSError**)error {
     activations++;
     assert(active && error && *error == nil);
-    if (strcmp(policy, "ambient") == 0) {
+    if (strcmp(policy, "ambient") == 0 && !failCategory) {
         assert([currentCategory isEqualToString:AVAudioSessionCategoryAmbient]);
     }
     if (failActivation) {
@@ -82,7 +84,8 @@ void FMODExt_register(lua_State* L) { registrations++; }
 FMOD_RESULT FMOD_Studio_System_Create(FMOD_STUDIO_SYSTEM** system, unsigned int version) {
     creates++;
     if (strcmp(policy, "ambient") == 0) {
-        assert(categories == 1 && [currentCategory isEqualToString:AVAudioSessionCategoryAmbient]);
+        assert(categories == 1); // Attempt the policy before creating FMOD, even if it fails.
+        assert([currentCategory isEqualToString:failCategory ? @"SoloAmbient" : AVAudioSessionCategoryAmbient]);
     }
     *system = (FMOD_STUDIO_SYSTEM*)(uintptr_t)1;
     return FMOD_OK;
@@ -97,13 +100,13 @@ FMOD_RESULT FMOD_Studio_System_Initialize(FMOD_STUDIO_SYSTEM* s, int channels, F
                                        FMOD_INITFLAGS flags, void* data) {
     initializes++;
     assert(activations == 0); // Startup must let FMOD own activation.
-    return FMOD_OK;
+    return failInitialize ? FMOD_ERR_OUTPUT_INIT : FMOD_OK;
 }
-FMOD_RESULT FMOD_Studio_System_Release(FMOD_STUDIO_SYSTEM* s) { return FMOD_OK; }
+FMOD_RESULT FMOD_Studio_System_Release(FMOD_STUDIO_SYSTEM* s) { releases++; return FMOD_OK; }
 FMOD_RESULT FMOD_System_MixerSuspend(FMOD_SYSTEM* s) { return FMOD_OK; }
 FMOD_RESULT FMOD_System_MixerResume(FMOD_SYSTEM* s) {
     resumes++;
-    assert(!failCategory && !failActivation && activations > 0);
+    assert(!failActivation && activations > 0);
     return FMOD_OK;
 }
 
@@ -125,12 +128,19 @@ int main(int argc, const char** argv) {
         const char* scenario = argv[1];
         if (strcmp(scenario, "default") == 0 || strcmp(scenario, "resume-default") == 0) { policy = "default"; }
         if (strcmp(scenario, "invalid") == 0) { policy = "ambinet"; }
-        failCategory = strcmp(scenario, "startup-failure") == 0;
+        failCategory = strcmp(scenario, "startup-failure") == 0 ||
+                       strcmp(scenario, "startup-category-fmod-failure") == 0;
+        failInitialize = strcmp(scenario, "startup-fmod-failure") == 0 ||
+                         strcmp(scenario, "startup-category-fmod-failure") == 0;
         FMODExt_init(NULL);
-        if (failCategory || strcmp(scenario, "invalid") == 0) {
-            assert(links == 0 && creates == 0 && initializes == 0 && registrations == 0);
-            assert(FMODExt_system == NULL && activations == 0);
+        if (failInitialize) {
+            assert(links == 1 && creates == 1 && initializes == 1 && registrations == 0);
+            assert(releases == 1 && FMODExt_system == NULL && activations == 0);
             return 0;
+        }
+        assert(releases == 0 && FMODExt_system != NULL);
+        if (failCategory || strcmp(scenario, "invalid") == 0) {
+            assert([currentCategory isEqualToString:@"SoloAmbient"]);
         }
         assert(links == 1 && creates == 1 && initializes == 1 && registrations == 1);
         assert(categories == (strcmp(policy, "ambient") == 0 ? 1 : 0));
@@ -141,9 +151,13 @@ int main(int argc, const char** argv) {
         assert(FMODExt_isPaused);
         // Simulate another writer resetting the category during the interruption.
         currentCategory = @"SoloAmbient";
-        failCategory = strcmp(scenario, "resume-category-failure") == 0;
+        failCategory = strcmp(scenario, "resume-category-failure") == 0 ||
+                       strcmp(scenario, "resume-category-activation-failure") == 0 ||
+                       strcmp(scenario, "resume-category-retry-success") == 0;
         failActivation = strcmp(scenario, "resume-activation-failure") == 0 ||
+                         strcmp(scenario, "resume-category-activation-failure") == 0 ||
                          strcmp(scenario, "resume-retry-success") == 0 ||
+                         strcmp(scenario, "resume-category-retry-success") == 0 ||
                          strcmp(scenario, "resume-cancel-retry") == 0;
         bool noResume = strcmp(scenario, "resume-not-permitted") == 0;
         interruption(AVAudioSessionInterruptionTypeEnded,
@@ -154,23 +168,27 @@ int main(int argc, const char** argv) {
             assert(pendingTimer && resumes == 0);
             interruption(AVAudioSessionInterruptionTypeBegan, 0);
             assert(!pendingTimer && resumes == 0 && FMODExt_isPaused);
-        } else if (strcmp(scenario, "resume-retry-success") == 0) {
+        } else if (strcmp(scenario, "resume-retry-success") == 0 ||
+                   strcmp(scenario, "resume-category-retry-success") == 0) {
             assert(pendingTimer && resumes == 0);
             failActivation = false;
             fireTimer();
             assert(resumes == 1 && !FMODExt_isPaused && !pendingTimer);
-        } else if (failCategory || failActivation) {
+            assert(categories == 3 && activations == 2 && timers == 1);
+        } else if (failActivation) {
             while (pendingTimer) { fireTimer(); }
             assert(timers == AUDIO_RESUME_RETRY_COUNT);
             assert(categories == 2 + AUDIO_RESUME_RETRY_COUNT);
-            assert(activations == (failCategory ? 0 : 1 + AUDIO_RESUME_RETRY_COUNT));
+            assert(activations == 1 + AUDIO_RESUME_RETRY_COUNT);
             assert(resumes == 0 && FMODExt_isPaused);
         } else if (strcmp(scenario, "resume-default") == 0) {
             assert(categories == 0 && activations == 1 && resumes == 1 && !FMODExt_isPaused);
             assert([currentCategory isEqualToString:@"SoloAmbient"]);
         } else {
             assert(categories == 2 && activations == 1 && resumes == 1 && !FMODExt_isPaused);
+            assert(timers == 0);
         }
+        if (failCategory) { assert([currentCategory isEqualToString:@"SoloAmbient"]); }
     }
     return 0;
 }
