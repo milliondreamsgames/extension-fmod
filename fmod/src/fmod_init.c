@@ -55,6 +55,12 @@ static FMOD_SPEAKERMODE speakerModeFromString(const char* str) {
     } while (0)
 
 void FMODExt_init(lua_State* L) {
+#if TARGET_OS_IPHONE
+    FMODExt_logIOSAudioSession("before FMOD initialization");
+    // Coexistence is best-effort; FMOD's own initialization checks still apply.
+    FMODExt_configureIOSAudioSession();
+#endif
+
     if (!FMODExt_linkLibraries()) {
         LOGE("Failed to link FMOD libraries");
         return;
@@ -103,6 +109,10 @@ void FMODExt_init(lua_State* L) {
 
     void* extraDriverData = NULL;
     check(FMOD_Studio_System_Initialize(FMODExt_system, 1024, studioInitFlags, FMOD_INIT_NORMAL, extraDriverData));
+
+#if TARGET_OS_IPHONE
+    FMODExt_logIOSAudioSession("after FMOD initialization");
+#endif
 
     FMODExt_isPaused = false;
 
