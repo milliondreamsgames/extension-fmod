@@ -84,7 +84,10 @@ void FMODExt_initIOSInterruptionHandler() {
                       } else if (typeValue == AVAudioSessionInterruptionTypeEnded) {
                           NSUInteger optionsValue =
                               [[notification.userInfo valueForKey:AVAudioSessionInterruptionOptionKey] intValue];
-                          if (optionsValue & AVAudioSessionInterruptionOptionShouldResume) {
+                          const char* policy = FMODExt_dmConfigFile_GetString("fmod.audio_session_category", "default");
+                          // Ambient game audio can resume without the optional playback-resume hint.
+                          if ((optionsValue & AVAudioSessionInterruptionOptionShouldResume) ||
+                              strcmp(policy, "ambient") == 0) {
                               resumeAudioSession(AUDIO_RESUME_RETRY_COUNT);
                           }
                       }
