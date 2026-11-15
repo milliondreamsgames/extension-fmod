@@ -36,33 +36,16 @@ If you need platform-specific overrides for these settings, open `game.project` 
 
 ### iOS audio coexistence
 
-To preserve music or podcasts already playing in another app, opt in before building:
+To let other apps' music or podcasts continue while your game plays audio on iOS, add this to `game.project`:
 
 ```ini
 [fmod]
 audio_session_category_ios = ambient
 ```
 
-`audio_session_category` accepts `default` (the default, which leaves the session policy
-untouched) and `ambient`. Only iOS reads this setting. Ambient is selected **before FMOD
-initialization** and reapplied before interruption recovery. It mixes without ducking
-other apps and respects the silent switch and screen locking; it does not enable background
-playback. No explicit startup activation is added.
+`audio_session_category` accepts `default` (leave the session unchanged) or `ambient` (mix with other audio and respect the silent switch). It applies only on iOS, before FMOD initialization and when recovering from interruptions. Configuration failures log a warning and allow audio startup or recovery to continue.
 
-Category configuration is best-effort: an invalid policy or failed Ambient request logs a
-warning and continues startup or recovery with the current session policy. External audio
-may then be interrupted. FMOD initialization errors still prevent Lua module registration,
-and failed session activation still keeps the mixer suspended with bounded retries.
-Logs report category, options, and the secondary-audio hint before and after FMOD
-initialization and after configuration failures; they do not contain media or account information.
-
-This setting does not mute your game's music automatically. Keep sound effects enabled and
-use the engine's external-music query to decide whether to play your own soundtrack.
-
-To run the native startup/interruption control-flow tests on macOS with Xcode, set
-`DMSDK_INCLUDE` to the directory containing `dmsdk/lua/lua.h`, then run
-`sh cicd/test_ios_audio.sh`. These tests compile the production implementation against
-session/FMOD doubles; real-iPhone playback testing is still required.
+This does not enable background playback or automatically mute your game's soundtrack. Use `sound.is_music_playing()` to decide whether to play your own music.
 
 ### Raise the heap size on HTML5
 

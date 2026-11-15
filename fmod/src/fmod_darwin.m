@@ -11,35 +11,23 @@
 
 static NSTimer* resumeTimer = nil;
 
-void FMODExt_logIOSAudioSession(const char* phase) {
-    @autoreleasepool {
-        AVAudioSession* session = [AVAudioSession sharedInstance];
-        LOGI("iOS audio session %s: category=%s options=%lu secondary_audio=%d", phase,
-             [[session category] UTF8String], (unsigned long)[session categoryOptions],
-             (int)[session secondaryAudioShouldBeSilencedHint]);
-    }
-}
-
-bool FMODExt_configureIOSAudioSession() {
+void FMODExt_configureIOSAudioSession() {
     @autoreleasepool {
         const char* policy = FMODExt_dmConfigFile_GetString("fmod.audio_session_category", "default");
-        if (strcmp(policy, "default") == 0) { return true; }
+        if (strcmp(policy, "default") == 0) { return; }
         if (strcmp(policy, "ambient") != 0) {
-            LOGW("Invalid fmod.audio_session_category: %s (expected default or ambient); continuing with current policy", policy);
-            FMODExt_logIOSAudioSession("after invalid policy");
-            return false;
+            LOGW("Invalid fmod.audio_session_category: %s (expected default or ambient)", policy);
+            return;
         }
 
-        // Configure mixing before FMOD opens output. Do not activate the session here.
         NSError* error = nil;
         BOOL success = [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryAmbient
-                                                      withOptions:0 error:&error];
+                                                        withOptions:0
+                                                              error:&error];
         if (!success) {
             LOGW("Cannot configure Ambient audio session; continuing with current policy: %s",
                  error ? [[error localizedDescription] UTF8String] : "no error was issued");
-            FMODExt_logIOSAudioSession("after category configuration failure");
         }
-        return success;
     }
 }
 
@@ -48,7 +36,6 @@ bool FMODExt_configureIOSAudioSession() {
 // errors out from the first try, but works on the second
 static void resumeAudioSession(int retries) {
     @autoreleasepool {
-        // A failed policy request must not prevent activation with the current policy.
         FMODExt_configureIOSAudioSession();
         NSError* error = nil;
         BOOL success = [[AVAudioSession sharedInstance] setActive:TRUE error:&error];
@@ -64,7 +51,7 @@ static void resumeAudioSession(int retries) {
         }
 
         if (retries <= 0) {
-            LOGE("Cannot restore audio session. Not retrying anymore.");
+            LOGE("Cannot activate audio session. Not retrying anymore.");
             return;
         }
 
