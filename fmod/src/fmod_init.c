@@ -55,6 +55,11 @@ static FMOD_SPEAKERMODE speakerModeFromString(const char* str) {
     } while (0)
 
 void FMODExt_init(lua_State* L) {
+#if TARGET_OS_IPHONE
+    // Select the category before FMOD opens audio output.
+    FMODExt_configureIOSAudioSession();
+#endif
+
     if (!FMODExt_linkLibraries()) {
         LOGE("Failed to link FMOD libraries");
         return;

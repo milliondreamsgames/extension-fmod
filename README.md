@@ -34,6 +34,19 @@ If you have issues with stutter, you can try adjusting `Buffer Length` and `Num 
 
 If you need platform-specific overrides for these settings, open `game.project` as a text file, scroll to the `fmod` section and append one of `_macos`, `_windows`, `_linux`, `_android`, `_ios`, `_html5` to the config key (eg. `buffer_length_android`).
 
+### iOS audio coexistence
+
+To let other apps' music or podcasts continue while your game plays audio on iOS, add this to `game.project`:
+
+```ini
+[fmod]
+audio_session_category_ios = ambient
+```
+
+`audio_session_category` accepts `default` (leave the session unchanged) or `ambient` (mix with other audio and respect the silent switch). It applies only on iOS, before FMOD initialization and when recovering from interruptions. Configuration failures log a warning and allow audio startup or recovery to continue.
+
+This does not enable background playback or automatically mute your game's soundtrack. Use `sound.is_music_playing()` to decide whether to play your own music.
+
 ### Raise the heap size on HTML5
 
 FMOD will hiccup and not play sound on HTML5 (particularily Safari on iOS and macOS) if it doesn't have enough memory for your banks and sound buffers, especially if loaded with `load_bank_memory()`, which copies them into memory. The exact amount  depends from game to game, but for this example to run, it needs a 512MB heap.

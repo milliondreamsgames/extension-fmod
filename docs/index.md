@@ -125,11 +125,24 @@ You can also set `sample_rate` and `num_raw_speakers` in the same section.
 
 If you have issues with audio stutter, adjust `buffer_length` and `num_buffers`. [More details on DSP buffer size](https://fmod.com/resources/documentation-api?version=2.0&page=core-api-system.html#system_setdspbuffersize).
 
+### iOS audio coexistence
+
+To let other apps' music or podcasts continue while your game plays audio on iOS, add this to `game.project`:
+
+```ini
+[fmod]
+audio_session_category_ios = ambient
+```
+
+`audio_session_category` accepts `default` (leave the session unchanged) or `ambient` (mix with other audio and respect the silent switch). It applies only on iOS, before FMOD initialization and when recovering from interruptions. Configuration failures log a warning and allow audio startup or recovery to continue.
+
+This does not enable background playback or automatically mute your game's soundtrack. Use `sound.is_music_playing()` to decide whether to play your own music.
+
 ### Platform-specific overrides
 
 The following keys support a platform suffix (`_macos`, `_windows`, `_linux`, `_android`, `_ios`, `_html5`, `_switch`):
 
-`speaker_mode`, `sample_rate`, `num_raw_speakers`, `buffer_length`, `num_buffers`, `live_update`, `run_while_iconified`
+`speaker_mode`, `sample_rate`, `num_raw_speakers`, `buffer_length`, `num_buffers`, `live_update`, `run_while_iconified`, `audio_session_category`
 
 ```
 [fmod]

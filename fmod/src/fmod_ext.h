@@ -97,6 +97,7 @@ void FMODExt_suspendMixer();
 void FMODExt_resumeMixer();
 
 #if TARGET_OS_IPHONE
+void FMODExt_configureIOSAudioSession();
 void FMODExt_initIOSInterruptionHandler();
 #endif
 

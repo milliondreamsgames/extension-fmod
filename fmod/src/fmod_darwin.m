@@ -4,18 +4,40 @@
 #if TARGET_OS_IPHONE
 
 #import <AVFoundation/AVFoundation.h>
+#include <string.h>
 
 #define AUDIO_RESUME_RETRY_COUNT 20
 #define AUDIO_RESUME_RETRY_INTERVAL 0.2
 
 static NSTimer* resumeTimer = nil;
 
+void FMODExt_configureIOSAudioSession() {
+    @autoreleasepool {
+        const char* policy = FMODExt_dmConfigFile_GetString("fmod.audio_session_category", "default");
+        if (strcmp(policy, "default") == 0) { return; }
+        if (strcmp(policy, "ambient") != 0) {
+            LOGW("Invalid fmod.audio_session_category: %s (expected default or ambient)", policy);
+            return;
+        }
+
+        NSError* error = nil;
+        BOOL success = [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryAmbient
+                                                        withOptions:0
+                                                              error:&error];
+        if (!success) {
+            LOGW("Cannot configure Ambient audio session; continuing with current policy: %s",
+                 error ? [[error localizedDescription] UTF8String] : "no error was issued");
+        }
+    }
+}
+
 // In case it doesn't work from the first try, retry activating the audio session
 // a few times. For example, after dismissing a phone call, [AVAudioSession setActive: error:]
 // errors out from the first try, but works on the second
 static void resumeAudioSession(int retries) {
     @autoreleasepool {
-        NSError* error;
+        FMODExt_configureIOSAudioSession();
+        NSError* error = nil;
         BOOL success = [[AVAudioSession sharedInstance] setActive:TRUE error:&error];
         if (success) {
             FMODExt_resumeMixer();
@@ -62,7 +84,10 @@ void FMODExt_initIOSInterruptionHandler() {
                       } else if (typeValue == AVAudioSessionInterruptionTypeEnded) {
                           NSUInteger optionsValue =
                               [[notification.userInfo valueForKey:AVAudioSessionInterruptionOptionKey] intValue];
-                          if (optionsValue & AVAudioSessionInterruptionOptionShouldResume) {
+                          const char* policy = FMODExt_dmConfigFile_GetString("fmod.audio_session_category", "default");
+                          // Ambient game audio can resume without the optional playback-resume hint.
+                          if ((optionsValue & AVAudioSessionInterruptionOptionShouldResume) ||
+                              strcmp(policy, "ambient") == 0) {
                               resumeAudioSession(AUDIO_RESUME_RETRY_COUNT);
                           }
                       }
